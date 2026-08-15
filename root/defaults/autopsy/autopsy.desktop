@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Autopsy
+GenericName=Digital Forensics Platform
+Comment=The Sleuth Kit Autopsy GUI
+Exec=/usr/local/bin/autopsy
+Icon=/opt/autopsy/icon.ico
+Terminal=false
+Categories=Security;Forensics;Utility;

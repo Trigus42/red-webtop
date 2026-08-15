@@ -1,0 +1,73 @@
+#!/usr/bin/with-contenv bash
+# Syncthing file sync (adapted from the Kali RDP image's startup/syncthing.sh).
+# Runs entirely as the abc user (via s6-setuidgid) with its config/state under
+# /config so it persists on the runtime volume. Web UI on :8384.
+#
+# s6 longrun: `syncthing serve` stays in the foreground, so we exec it directly
+# (no backgrounding/wait as in the supervisord version). When SYNCTHING_ENABLE
+# is not "true" we park with `sleep infinity` (see svc-sshd for why).
+#
+# NB: on this (Debian) syncthing the config/data dir is selected via the STHOMEDIR
+# environment variable for every subcommand; `--home` is a flag of the `serve`
+# subcommand only (it must come AFTER `serve`, not before it). We export STHOMEDIR
+# so generate / --device-id / cli all target the same dir.
+
+set -u
+
+if [ "${SYNCTHING_ENABLE:-}" != "true" ]; then
+    echo "[svc-syncthing] SYNCTHING_ENABLE!=true — not starting syncthing (parked)."
+    exec sleep infinity
+fi
+
+export STHOMEDIR="${STHOMEDIR:-/config/.config/syncthing}"
+SYNC_DIR="${SYNCTHING_SYNC_DIR:-/config/syncthing}"
+
+# If gocryptfs is enabled, wait for its mount so a synced folder placed inside the
+# encrypted view isn't created on the bare mountpoint before the mount lands.
+if [ -n "${GOCRYPTFS_PASSWORD:-}" ]; then
+    ENC="${ENCRYPTED_MOUNT:-/workspace/host-encrypted}"
+    echo "[svc-syncthing] waiting for gocryptfs mount at $ENC ..."
+    while ! mountpoint -q "$ENC" 2>/dev/null; do sleep 1; done
+    echo "[svc-syncthing] gocryptfs mount detected."
+fi
+
+install -d -o abc -g abc "$STHOMEDIR" "$SYNC_DIR"
+
+# STHOMEDIR is exported, so s6-setuidgid passes it through to syncthing.
+run_as_abc() { s6-setuidgid abc env STHOMEDIR="$STHOMEDIR" "$@"; }
+
+# First-run config.
+if [ ! -f "$STHOMEDIR/config.xml" ]; then
+    run_as_abc syncthing generate --no-default-folder
+fi
+
+# Force the web UI to listen on all interfaces (generate defaults it to
+# 127.0.0.1:8384, which is unreachable from outside the container). Only rewrite
+# the loopback default so a user who set their own address is left alone.
+if grep -q '<address>127.0.0.1:8384</address>' "$STHOMEDIR/config.xml" 2>/dev/null; then
+    sed -i 's#<address>127.0.0.1:8384</address>#<address>0.0.0.0:8384</address>#' \
+        "$STHOMEDIR/config.xml"
+fi
+
+DEVICE_ID="$(run_as_abc syncthing --device-id 2>/dev/null || true)"
+echo "=============================================="
+echo "Syncthing Device ID: ${DEVICE_ID:-<pending>}"
+echo "Web UI: http://localhost:8384"
+echo "=============================================="
+
+# Add the default shared folder once the API is up (do it in the background, then
+# exec syncthing in the foreground so s6 supervises the real daemon).
+(
+    until run_as_abc syncthing cli show system &>/dev/null; do sleep 1; done
+    if ! run_as_abc syncthing cli config folders list 2>/dev/null | grep -q 'workspace-sync'; then
+        run_as_abc syncthing cli config folders add \
+            --id workspace-sync --label workspace --path "$SYNC_DIR" \
+            --type sendreceive --rescan-intervals 60 \
+            --fswatcher-enabled --fswatcher-delays 10 --auto-normalize \
+            && echo "[svc-syncthing] workspace folder added."
+    fi
+) &
+
+echo "[svc-syncthing] starting syncthing (UI on :8384)"
+exec s6-setuidgid abc env STHOMEDIR="$STHOMEDIR" \
+    syncthing serve --no-browser

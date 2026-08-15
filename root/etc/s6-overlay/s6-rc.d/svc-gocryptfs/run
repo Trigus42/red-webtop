@@ -1,0 +1,44 @@
+#!/usr/bin/with-contenv bash
+# gocryptfs encrypted host volume (adapted from the Kali RDP image's
+# startup/gocryptfs.sh). Reverse-encrypted directory lives on the (possibly
+# untrusted) host bind mount; the decrypted view is mounted for the abc user.
+#
+# s6 longrun: gocryptfs runs in the foreground (-fg) so s6 supervises it. When
+# GOCRYPTFS_PASSWORD is unset we park with `sleep infinity` (see svc-sshd for why).
+# Requires the container to have /dev/fuse (privileged, or --device /dev/fuse
+# --cap-add SYS_ADMIN).
+
+set -u
+
+if [ -z "${GOCRYPTFS_PASSWORD:-}" ]; then
+    echo "[svc-gocryptfs] GOCRYPTFS_PASSWORD unset — encrypted volume disabled (parked)."
+    exec sleep infinity
+fi
+
+RAW_MOUNT="${RAW_MOUNT:-/workspace/host-unencrypted}"
+ENCRYPTED_MOUNT="${ENCRYPTED_MOUNT:-/workspace/host-encrypted}"
+ENCRYPTED_FOLDER_NAME="${ENCRYPTED_FOLDER_NAME:-kali-encrypted-mount}"
+
+CIPHER_DIR="${RAW_MOUNT}/${ENCRYPTED_FOLDER_NAME}"
+MOUNT_DIR="${ENCRYPTED_MOUNT}"
+
+mkdir -p "$CIPHER_DIR" "$MOUNT_DIR"
+
+# Initialise the encrypted filesystem on first use.
+if [ ! -f "$CIPHER_DIR/gocryptfs.conf" ]; then
+    echo "[svc-gocryptfs] initialising encrypted filesystem in $CIPHER_DIR"
+    printf '%s' "$GOCRYPTFS_PASSWORD" | gocryptfs -init -q -nosyslog "$CIPHER_DIR"
+fi
+
+# Own the decrypted view as abc (the underlying host fs often can't chown).
+ABC_UID="$(id -u abc)"
+ABC_GID="$(id -g abc)"
+
+echo "[svc-gocryptfs] mounting $CIPHER_DIR at $MOUNT_DIR"
+# Feed the passphrase on stdin via -extpass so we can still `exec` gocryptfs as the
+# foreground process (a `printf | exec gocryptfs` pipeline would fork a subshell and
+# leave this run script — not gocryptfs — as the supervised process).
+export GOCRYPTFS_PASSWORD
+exec gocryptfs -fg -nosyslog -force_owner "${ABC_UID}:${ABC_GID}" \
+    -extpass '/bin/sh -c "printf %s \"$GOCRYPTFS_PASSWORD\""' \
+    "$CIPHER_DIR" "$MOUNT_DIR"

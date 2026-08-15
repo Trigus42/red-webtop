@@ -1,0 +1,17 @@
+# Runtime volume created by `docker run -v $PWD/config:/config`
+config/
+
+# DIND data + gocryptfs host mounts
+docker-data/
+host-unencrypted/
+host-encrypted/
+
+# Test evidence images / large downloads
+*.dd
+*.e01
+*.E01
+autopsy-*.zip
+sleuthkit-*.tar.gz
+openjfx*.zip
+
+.DS_Store

@@ -1,0 +1,45 @@
+services:
+  red-webtop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: red-webtop:latest
+    container_name: red-webtop
+
+    # Docker-in-Docker is provided by the Webtop base image and auto-starts when
+    # the container is privileged (gated by START_DOCKER, default on). gocryptfs
+    # also needs /dev/fuse, which privileged provides. If you don't need DIND or
+    # gocryptfs you can drop privileged and instead add:
+    #   cap_add: [SYS_ADMIN]
+    #   devices: ["/dev/fuse"]
+    privileged: true
+
+    shm_size: "2gb"
+
+    environment:
+      - PUID=911            # the Webtop "abc" user (uid 911 on this base)
+      - PGID=1000
+      - TZ=Etc/UTC
+      # Toggle the optional services (all default OFF / parked):
+      - SSHD_ENABLE=true
+      - SYNCTHING_ENABLE=false
+      # Docker-in-Docker: base default is on when privileged. Set false to disable.
+      - START_DOCKER=true
+      # Set a passphrase to enable the gocryptfs encrypted host volume:
+      # - GOCRYPTFS_PASSWORD=change-me
+
+    ports:
+      - "3000:3000"    # KDE desktop over HTTP
+      - "3001:3001"    # KDE desktop over HTTPS
+      - "8384:8384"    # Syncthing web UI (when SYNCTHING_ENABLE=true)
+      - "2222:22"      # SSH (when SSHD_ENABLE=true)
+
+    volumes:
+      - ./config:/config
+      # Recommended by linuxserver for DIND performance (persists docker data):
+      # - ./docker-data:/var/lib/docker
+      # For the gocryptfs encrypted volume, bind the host dir that holds the
+      # cipher-text (defaults to /workspace/host-unencrypted inside the container):
+      # - ./host-unencrypted:/workspace/host-unencrypted
+
+    restart: unless-stopped

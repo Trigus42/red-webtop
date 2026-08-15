@@ -1,0 +1,37 @@
+#!/usr/bin/with-contenv bash
+# OpenSSH server (adapted from the Kali RDP image's startup/sshd.sh).
+#
+# s6 longrun: this script must stay in the foreground. When SSHD_ENABLE is not
+# "true" we park with `sleep infinity` instead of exiting, because s6 restarts a
+# longrun whose run script exits (which would be a busy-loop). Toggle on with
+# `-e SSHD_ENABLE=true`.
+#
+# Host keys are generated at runtime (never baked into the image). The abc user's
+# authorized_keys is seeded from a key bind-mounted at
+# /config/.ssh/authorized_keys or from the lsio-style secret path
+# /run/secrets/authorized_keys — password auth is disabled in sshd_config.
+
+if [ "${SSHD_ENABLE:-}" != "true" ]; then
+    echo "[svc-sshd] SSHD_ENABLE!=true — not starting sshd (parked)."
+    exec sleep infinity
+fi
+
+# Generate host keys if this container has none yet.
+ssh-keygen -A
+
+mkdir -p /run/sshd
+
+# Seed abc's authorized_keys from whichever mount is present (first wins).
+ABC_HOME="$(getent passwd abc | cut -d: -f6)"
+: "${ABC_HOME:=/config}"
+for src in /config/.ssh/authorized_keys /run/secrets/authorized_keys; do
+    if [ -f "$src" ]; then
+        install -d -m700 -o abc -g abc "$ABC_HOME/.ssh"
+        install -m600 -o abc -g abc "$src" "$ABC_HOME/.ssh/authorized_keys"
+        echo "[svc-sshd] seeded authorized_keys from $src"
+        break
+    fi
+done
+
+echo "[svc-sshd] starting sshd on :22"
+exec /usr/sbin/sshd -D -e

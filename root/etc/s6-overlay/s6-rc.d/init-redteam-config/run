@@ -1,0 +1,37 @@
+#!/usr/bin/with-contenv bash
+# Seed the abc user's shell environment (zsh + starship) into the /config runtime
+# volume at container start. Idempotent: only writes files that are missing, so a
+# user's own edits are never clobbered. Runs at every start (lsio s6 oneshot).
+#
+# Why at runtime, not build time: in lsio images /config is a volume, so anything
+# written there during `docker build` is masked when the volume mounts. The shell
+# packages (zsh, plugins, starship, mise) are installed system-wide in the image;
+# only the per-user dotfiles are seeded here.
+
+ABC_HOME="$(getent passwd abc | cut -d: -f6)"
+: "${ABC_HOME:=/config}"
+
+install -d -o abc -g abc "$ABC_HOME/.config" "$ABC_HOME/.cache"
+
+if [ ! -f "$ABC_HOME/.zshrc" ]; then
+    install -m644 -o abc -g abc /defaults/redteam/.zshrc "$ABC_HOME/.zshrc"
+fi
+if [ ! -f "$ABC_HOME/.config/starship.toml" ]; then
+    install -m644 -o abc -g abc /defaults/redteam/starship.toml "$ABC_HOME/.config/starship.toml"
+fi
+
+# Konsole: ship a default profile whose Command is /bin/zsh explicitly. Without it
+# Konsole reads an empty SHELL from the desktop session and warns
+# "Could not find '', starting '/bin/zsh' instead. Please check your profile settings."
+# on every terminal open. konsolerc points the default profile at it.
+install -d -o abc -g abc "$ABC_HOME/.local/share/konsole"
+if [ ! -f "$ABC_HOME/.local/share/konsole/zsh.profile" ]; then
+    install -m644 -o abc -g abc /defaults/redteam/konsole/zsh.profile \
+        "$ABC_HOME/.local/share/konsole/zsh.profile"
+fi
+if [ ! -f "$ABC_HOME/.config/konsolerc" ]; then
+    install -m644 -o abc -g abc /defaults/redteam/konsole/konsolerc \
+        "$ABC_HOME/.config/konsolerc"
+fi
+
+echo "[init-redteam-config] zsh + starship + konsole dotfiles seeded for abc"

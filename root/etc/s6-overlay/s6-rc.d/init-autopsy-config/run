@@ -1,0 +1,34 @@
+#!/usr/bin/with-contenv bash
+# Seed per-user Autopsy config into the /config runtime volume, as user "abc".
+# Runs at every container start (lsio s6 oneshot). Idempotent: only writes files
+# that are missing, so a user's own changes are never overwritten.
+
+CFG=/config
+APPS="$CFG/.local/share/applications"
+INGEST="$CFG/.autopsy/dev/config/ModuleConfig/IngestSettings"
+
+mkdir -p "$APPS" "$INGEST"
+
+# 1) KDE application-menu entry
+if [ ! -f "$APPS/autopsy.desktop" ]; then
+    cp /defaults/autopsy/autopsy.desktop "$APPS/autopsy.desktop"
+fi
+
+# 2) Default ingest profiles (aarch64-compatible module set) for GUI wizard + CLI.
+#    Only seed if absent so Autopsy/the user can freely rewrite them later.
+for f in \
+    org.sleuthkit.autopsy.casemodule.AddImageWizardIngestConfigPanel.properties \
+    CommandLineModeContext.properties
+do
+    if [ ! -f "$INGEST/$f" ]; then
+        cp "/defaults/autopsy/IngestSettings/$f" "$INGEST/$f"
+    fi
+done
+
+# 3) Make sure everything under /config we touched is owned by the abc user.
+#    PUID/PGID default to 1000 in lsio images (the "abc" user/group).
+chown -R "${PUID:-1000}:${PGID:-1000}" \
+    "$APPS/autopsy.desktop" \
+    "$CFG/.autopsy" 2>/dev/null || true
+
+echo "[init-autopsy-config] desktop entry + default ingest profiles seeded"

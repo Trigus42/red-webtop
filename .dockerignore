@@ -1,0 +1,9 @@
+# Local build/test artifacts — never send to the build context or commit.
+config/
+docker-data/
+host-unencrypted/
+host-encrypted/
+*.dd
+*.zip
+*.tar.gz
+.DS_Store

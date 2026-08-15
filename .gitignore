@@ -15,3 +15,9 @@ sleuthkit-*.tar.gz
 openjfx*.zip
 
 .DS_Store
+
+# WireGuard/VPN configs (secrets) for the gluetun sidecar
+vpn-configs/
+
+# Real compose files hold runtime config (env, VPN choice) — track the .example templates instead
+docker-compose.yaml

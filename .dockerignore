@@ -7,3 +7,4 @@ host-encrypted/
 *.zip
 *.tar.gz
 .DS_Store
+vpn-configs/

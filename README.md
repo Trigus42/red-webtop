@@ -7,7 +7,11 @@ offensive CLI tools — built on [linuxserver.io Webtop](https://docs.linuxserve
 
 ## Quick start
 
+Copy the example compose file (it holds your runtime env, so it isn't tracked) and
+bring the stack up:
+
 ```bash
+cp docker-compose.example.yaml docker-compose.yaml
 docker compose up -d --build
 ```
 
@@ -27,6 +31,9 @@ Security/Forensics menu, or open a terminal for the CLI tools.
 
 Everything under **`/config`** (cases, evidence, shell history, ssh keys, syncthing
 state) persists in the mounted `./config` volume.
+
+> To route all traffic through a VPN, use the Gluetun variant instead — see
+> [VPN (Gluetun)](#vpn-gluetun).
 
 ## SSH access
 
@@ -65,6 +72,24 @@ in `~/.local/bin` / your mise path, both persisted under `/config`).
 | **syncthing** | `SYNCTHING_ENABLE=true` | 8384 | runs as `abc`; state under `/config`; device ID in `docker logs` |
 | **gocryptfs** | `GOCRYPTFS_PASSWORD=…` | — | encrypted host volume (needs `/dev/fuse`); cipher-text in `/workspace/host-unencrypted`, decrypted at `/workspace/host-encrypted` |
 | **Docker (DIND)** | `--privileged` (default on) | — | `abc` is in the `docker` group; persist with `-v ./docker-data:/var/lib/docker` |
+
+## VPN (Gluetun)
+
+Route **all** of red-webtop's traffic through a WireGuard VPN with a kill switch, using
+a [Gluetun](https://github.com/qdm12/gluetun) sidecar that owns the network namespace
+(if the tunnel drops, nothing leaks). Ports are published on the gluetun container, so
+the desktop/ssh stay reachable regardless of VPN state.
+
+```bash
+cp docker-compose.gluetun.example.yaml docker-compose.gluetun.yaml
+mkdir -p vpn-configs                 # drop your WireGuard config at vpn-configs/wg0.conf
+docker compose -f docker-compose.gluetun.yaml up -d --build
+```
+
+`wg0.conf` is standard `wg-quick` format. Its `DNS =` line is ignored — Gluetun uses its
+own encrypted DoT resolver (Quad9 by default; set `DNS_UPSTREAM_RESOLVERS`). Set
+`VPN_IPV6=off` if your provider lacks IPv6, and `FIREWALL_OUTBOUND_SUBNETS=<cidr>` to
+allow LAN access outside the tunnel.
 
 ## Adding more tools
 

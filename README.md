@@ -1,5 +1,8 @@
 # red-webtop
 
+> [!IMPORTANT]
+> **No Support** — This project is built and maintained strictly for my personal work. It is shared in case it is useful to others, but I do not offer technical support, troubleshooting, or feature maintenance.
+
 A browser-accessible **red-team + digital-forensics workstation**: a full KDE desktop
 in your browser with the **Autopsy 4.23.1** GUI and a zsh terminal preloaded with
 offensive CLI tools — built on [linuxserver.io Webtop](https://docs.linuxserver.io/images/docker-webtop/)
